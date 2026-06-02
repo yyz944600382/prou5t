@@ -15,20 +15,26 @@ export class HookRegistry {
   async trigger(
     event: HookEvent,
     ctx: SessionContext,
-    extra?: string
+    extra?: string,
   ): Promise<void> {
     for (const hook of this.hooks) {
-      const fn = hook[event];
-      if (fn) {
-        try {
-          if (event === "afterUserMessage" || event === "afterAssistantMessage") {
-            await fn.call(hook, ctx, extra);
-          } else {
-            await fn.call(hook, ctx);
-          }
-        } catch (err) {
-          console.error(`[Hook Error] ${hook.name}.${event}:`, err);
+      try {
+        switch (event) {
+          case "beforeConversation":
+            await hook.beforeConversation?.(ctx);
+            break;
+          case "afterUserMessage":
+            await hook.afterUserMessage?.(ctx, extra ?? "");
+            break;
+          case "afterAssistantMessage":
+            await hook.afterAssistantMessage?.(ctx, extra ?? "");
+            break;
+          case "afterConversationEnd":
+            await hook.afterConversationEnd?.(ctx);
+            break;
         }
+      } catch (err) {
+        console.error(`[Hook Error] ${hook.name}.${event}:`, err);
       }
     }
   }

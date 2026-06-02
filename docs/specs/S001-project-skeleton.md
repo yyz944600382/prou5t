@@ -2,7 +2,7 @@
 doc_kind: spec
 created: 2026-06-02
 phase: 1
-status: draft
+status: review
 depends_on: [D001, D002, D003, D004]
 ---
 
@@ -69,7 +69,7 @@ src/
     config.ts           # 配置管理（读取 .env）
 ```
 
-## Open Questions
+## Resolved Questions
 
-- CLI 框架选 Inquirer.js 还是 @clack/prompts？
-- 是否 Phase 1 就实现 Ollama 适配器，还是放到 Phase 4？
+- CLI 框架选 **@clack/prompts** — 轻量现代，风格简洁，适合对话式 CLI
+- Ollama 适配器放到 **Phase 4** — 先确保 Claude + OpenAI 跑通
