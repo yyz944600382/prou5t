@@ -1,0 +1,24 @@
+{
+  "name": "prou5t",
+  "version": "0.1.0",
+  "description": "Recall Agent - 回忆助手",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "prou5t": "dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check src/",
+    "format": "biome format src/ --write"
+  },
+  "keywords": ["agent", "diary", "memory", "recall"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
