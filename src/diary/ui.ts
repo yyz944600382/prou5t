@@ -1,10 +1,18 @@
 /**
  * 日记提取的用户交互界面
  * 使用 @clack/prompts 展示提取结果并收集用户确认
+ * headless 模式下自动确认
  */
 
 import * as p from "@clack/prompts";
 import type { DiaryEntry } from "./types";
+
+/** headless 模式标志 */
+let isHeadless = false;
+
+export function setHeadlessMode(value: boolean): void {
+  isHeadless = value;
+}
 
 /**
  * 用户确认结果
@@ -25,6 +33,27 @@ export interface UserConfirmation {
 export async function confirmExtraction(
   diary: Omit<DiaryEntry, "id">,
 ): Promise<UserConfirmation> {
+  // headless 模式：自动确认
+  if (isHeadless) {
+    console.log("[回忆助手] 检测到回忆内容，已自动保存日记：");
+    console.log(`  📅 事件时间: ${diary.eventDate ?? "未知"}`);
+    console.log(`  内容: ${diary.content}`);
+    if (diary.people?.length) {
+      console.log(`  👥 人物: ${diary.people.join(", ")}`);
+    }
+    if (diary.locations?.length) {
+      console.log(`  📍 地点: ${diary.locations.join(", ")}`);
+    }
+    if (diary.emotions?.length) {
+      console.log(`  ❤️  情感: ${diary.emotions.join(", ")}`);
+    }
+    if (diary.tags?.length) {
+      console.log(`  🏷️  标签: ${diary.tags.join(", ")}`);
+    }
+    return { action: "confirm", diary };
+  }
+
+  // 交互模式
   p.note("检测到回忆内容，已为你提炼成日记：", "回忆助手");
 
   // 展示提取结果
