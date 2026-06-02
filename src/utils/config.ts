@@ -16,6 +16,8 @@ export interface AppConfig {
   anthropicApiKey: string;
   /** OpenAI API Key */
   openaiApiKey: string;
+  /** DeepSeek API Key */
+  deepseekApiKey: string;
   /** 数据目录 */
   dataDir: string;
 }
@@ -31,6 +33,7 @@ export function loadConfig(overrides?: { model?: string }): AppConfig {
     defaultModel: overrides?.model ?? process.env.DEFAULT_MODEL ?? "claude",
     anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
     openaiApiKey: process.env.OPENAI_API_KEY ?? "",
+    deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? "",
     dataDir,
   };
 
@@ -51,6 +54,9 @@ export function validateConfig(config: AppConfig): string[] {
   }
   if (config.defaultModel === "openai" && !config.openaiApiKey) {
     missing.push("OPENAI_API_KEY");
+  }
+  if (config.defaultModel === "deepseek" && !config.deepseekApiKey) {
+    missing.push("DEEPSEEK_API_KEY");
   }
 
   return missing;
