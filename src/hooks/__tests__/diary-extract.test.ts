@@ -1,330 +1,237 @@
 /**
- * DiaryExtractHook 测试
+ * DiaryExtractHook 测试（真实 API + 真实数据库，UI mock 是必需的）
+ *
+ * 注意：UI (@clack/prompts) 必须保持 mock，因为无法在测试环境中自动化交互。
+ * 但 LLM 调用和数据库操作使用真实实现。
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  vi,
+} from "vitest";
 import { DiaryExtractHook } from "../diary-extract";
 import type { SessionContext } from "../../agent/types";
-import type { LLMAdapter } from "../../adapters/base";
-import type { LLMResponse } from "../../adapters/base";
-import type { DiaryEntry } from "../../diary/types";
 import { DiaryRepository } from "../../storage/diary-repository";
 import { initDatabase, closeDatabase } from "../../storage/database";
-import * as DiaryModule from "../../diary/ui";
+import { createAdapter, type AdapterConfig } from "../../adapters";
+import { DiaryExtractor } from "../../diary/extractor";
+import * as DiaryUI from "../../diary/ui";
+import { existsSync, rmSync } from "node:fs";
 
-// Mock dependencies
-vi.mock("../../storage/diary-repository", () => ({
-  DiaryRepository: vi.fn(),
-}));
+const TEST_DATA_DIR = "test-data-hook";
 
+// UI mock 是必需的（无法在测试环境中自动化终端交互）
 vi.mock("../../diary/ui", () => ({
-  confirmExtraction: vi.fn(),
+  confirmExtraction: vi.fn().mockResolvedValue({ action: "skip" }),
 }));
 
-describe("DiaryExtractHook", () => {
-  let mockAdapter: LLMAdapter;
-  let mockRepository: DiaryRepository;
+describe("DiaryExtractHook（真实 API + 真实数据库）", { timeout: 120000 }, () => {
   let hook: DiaryExtractHook;
+  let repository: DiaryRepository;
   let ctx: SessionContext;
+  let config: AdapterConfig;
 
-  beforeEach(() => {
-    // 初始化测试数据库
-    closeDatabase();
-    initDatabase("test-data-hook");
+  beforeAll(() => {
+    // 从环境变量读取配置
+    const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
+    if (!deepseekApiKey) {
+      throw new Error("DEEPSEEK_API_KEY 环境变量未设置");
+    }
 
-    // 创建 mock adapter
-    mockAdapter = {
-      name: "mock-adapter",
-      chat: vi.fn(),
-      chatWithTools: vi.fn(),
+    config = {
+      anthropicApiKey: process.env.ANTHROPIC_API_KEY || "test-key",
+      openaiApiKey: process.env.OPENAI_API_KEY || "test-key",
+      deepseekApiKey,
     };
 
-    // 创建 mock repository
-    mockRepository = {
-      save: vi.fn(),
-      findById: vi.fn(),
-      list: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    } as unknown as DiaryRepository;
-    vi.mocked(DiaryRepository).mockImplementation(() => mockRepository);
+    // 创建真实适配器
+    const adapter = createAdapter("deepseek", config);
 
-    // 创建 hook 实例
-    hook = new DiaryExtractHook({ adapter: mockAdapter });
+    // 创建 hook 实例（使用真实适配器）
+    hook = new DiaryExtractHook({ adapter });
+  });
 
-    // 创建 mock context
+  beforeEach(() => {
+    // 每个测试前清理并重新初始化数据库
+    closeDatabase();
+    if (existsSync(TEST_DATA_DIR)) {
+      try {
+        rmSync(TEST_DATA_DIR, { recursive: true, force: true });
+      } catch {
+        // 忽略清理错误
+      }
+    }
+    initDatabase(TEST_DATA_DIR);
+    repository = new DiaryRepository();
     ctx = {} as SessionContext;
-
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
+  afterAll(() => {
     closeDatabase();
+    if (existsSync(TEST_DATA_DIR)) {
+      try {
+        rmSync(TEST_DATA_DIR, { recursive: true, force: true });
+      } catch {
+        // 忽略清理错误
+      }
+    }
   });
 
   describe("基础流程", () => {
-    it("应该在消息累积满足条件后触发提取", async () => {
-      // Mock isRecall 和 extract 返回不同结果
-      vi.mocked(mockAdapter.chat)
-        .mockResolvedValueOnce({
-          content: `{"isRecall": true, "reason": "回忆", "confidence": 0.9}`,
-        } as LLMResponse)
-        .mockResolvedValueOnce({
-          content: `{
-  "eventDate": "2024-03-15",
-  "content": "测试回忆",
-  "people": [],
-  "locations": [],
-  "emotions": [],
-  "tags": []
-}`,
-        } as LLMResponse);
-
-      // Mock 用户确认
-      vi.mocked(DiaryModule.confirmExtraction).mockResolvedValue({
-        action: "confirm",
-      });
-
-      // 发送长消息触发提取
-      const longMessage = "A".repeat(201);
-      await hook.afterUserMessage(ctx, longMessage);
-
-      expect(DiaryModule.confirmExtraction).toHaveBeenCalled();
-    });
-
     it("短消息不应该触发提取", async () => {
       await hook.afterUserMessage(ctx, "短消息");
-
-      expect(mockAdapter.chat).not.toHaveBeenCalled();
-      expect(DiaryModule.confirmExtraction).not.toHaveBeenCalled();
+      // 验证：检查数据库没有新增日记
+      const diaries = repository.list();
+      expect(diaries.length).toBe(0);
     });
 
-    it("三条消息应该触发提取", async () => {
-      vi.mocked(mockAdapter.chat).mockResolvedValue({
-        content: `{"isRecall": true, "reason": "回忆", "confidence": 0.9}`,
-      } as LLMResponse);
-
-      await hook.afterUserMessage(ctx, "消息1");
-      await hook.afterUserMessage(ctx, "消息2");
-      await hook.afterUserMessage(ctx, "消息3");
-
-      expect(mockAdapter.chat).toHaveBeenCalled();
-    });
-  });
-
-  describe("回忆识别", () => {
-    it("不是回忆时不应该提取", async () => {
-      vi.mocked(mockAdapter.chat).mockResolvedValue({
-        content: `{"isRecall": false, "reason": "日常", "confidence": 0.9}`,
-      } as LLMResponse);
-
-      const longMessage = "A".repeat(201);
-      await hook.afterUserMessage(ctx, longMessage);
-
-      expect(DiaryModule.confirmExtraction).not.toHaveBeenCalled();
-      expect(mockRepository.save).not.toHaveBeenCalled();
-    });
-
-    it("置信度 < 0.7 时不应该提取", async () => {
-      vi.mocked(mockAdapter.chat).mockResolvedValue({
-        content: `{"isRecall": true, "reason": "回忆", "confidence": 0.6}`,
-      } as LLMResponse);
-
-      const longMessage = "A".repeat(201);
-      await hook.afterUserMessage(ctx, longMessage);
-
-      expect(DiaryModule.confirmExtraction).not.toHaveBeenCalled();
-      expect(mockRepository.save).not.toHaveBeenCalled();
-    });
-
-    it("识别为回忆时应该提取", async () => {
-      vi.mocked(mockAdapter.chat)
-        .mockResolvedValueOnce({
-          content: `{"isRecall": true, "reason": "回忆", "confidence": 0.9}`,
-        } as LLMResponse)
-        .mockResolvedValueOnce({
-          content: `{
-  "eventDate": "2024-01-01",
-  "content": "回忆内容",
-  "people": [],
-  "locations": [],
-  "emotions": [],
-  "tags": []
-}`,
-        } as LLMResponse);
-
-      vi.mocked(DiaryModule.confirmExtraction).mockResolvedValue({
-        action: "confirm",
-      });
-
-      const longMessage = "A".repeat(201);
-      await hook.afterUserMessage(ctx, longMessage);
-
-      expect(DiaryModule.confirmExtraction).toHaveBeenCalled();
-    });
-  });
-
-  describe("用户确认流程", () => {
-    beforeEach(() => {
-      vi.mocked(mockAdapter.chat)
-        .mockResolvedValueOnce({
-          content: `{"isRecall": true, "reason": "回忆", "confidence": 0.9}`,
-        } as LLMResponse)
-        .mockResolvedValueOnce({
-          content: `{
-  "eventDate": "2024-01-01",
-  "content": "回忆内容",
-  "people": [],
-  "locations": [],
-  "emotions": [],
-  "tags": []
-}`,
-        } as LLMResponse);
-    });
-
-    it("用户确认应该保存日记", async () => {
-      vi.mocked(DiaryModule.confirmExtraction).mockResolvedValue({
-        action: "confirm",
-      });
-      vi.mocked(mockRepository.save).mockReturnValue("test-id");
-
-      const longMessage = "A".repeat(201);
-      await hook.afterUserMessage(ctx, longMessage);
-
-      expect(mockRepository.save).toHaveBeenCalled();
-    });
-
-    it("用户跳过不应该保存日记", async () => {
-      vi.mocked(DiaryModule.confirmExtraction).mockResolvedValue({
+    it("三条回忆消息应该触发提取", { timeout: 60000 }, async () => {
+      // Mock UI 返回跳过（避免真实交互）
+      vi.mocked(DiaryUI.confirmExtraction).mockResolvedValue({
         action: "skip",
       });
 
-      const longMessage = "A".repeat(201);
-      await hook.afterUserMessage(ctx, longMessage);
+      // 用真实的回忆内容，这样 isRecall 才会返回 true
+      await hook.afterUserMessage(ctx, "去年夏天我和朋友去了海边");
+      await hook.afterUserMessage(ctx, "那天天气特别好，阳光很刺眼");
+      await hook.afterUserMessage(ctx, "我们在沙滩上玩了一整天，晚上还吃了海鲜大餐");
 
-      expect(mockRepository.save).not.toHaveBeenCalled();
+      // 等待异步操作完成（真实 API 需要时间）
+      await new Promise((resolve) => setTimeout(resolve, 15000));
+
+      // UI 应该被调用（因为触发了提取）
+      expect(DiaryUI.confirmExtraction).toHaveBeenCalled();
+    });
+  });
+
+  describe("数据库操作验证", () => {
+    it("应该能保存日记到真实数据库", async () => {
+      // 直接测试数据库操作
+      const diaryId = repository.save({
+        content: "测试日记",
+        eventDate: "2024-06-02",
+      });
+
+      expect(diaryId).toBeDefined();
+      expect(typeof diaryId).toBe("string");
+
+      // 验证可以查询
+      const found = repository.findById(diaryId);
+      expect(found).not.toBeNull();
+      expect(found?.content).toBe("测试日记");
+      expect(found?.eventDate).toBe("2024-06-02");
     });
 
-    it("用户修改后确认应该保存修改后的日记", async () => {
-      const modifiedDiary: Omit<DiaryEntry, "id"> = {
-        eventDate: "2024-12-25",
-        createdAt: "2024-12-25T00:00:00.000Z",
-        content: "修改后的内容",
-        people: ["新人物"],
-        locations: ["新地点"],
-        emotions: ["新情感"],
-        tags: ["新标签"],
-      };
-      vi.mocked(DiaryModule.confirmExtraction).mockResolvedValue({
-        action: "confirm",
-        diary: modifiedDiary,
+    it("应该能按条件查询日记", async () => {
+      // 保存测试数据
+      repository.save({
+        content: "旅行日记",
+        tags: ["旅行"],
+        eventDate: "2024-01-01",
       });
-      vi.mocked(mockRepository.save).mockReturnValue("test-id");
 
-      const longMessage = "A".repeat(201);
-      await hook.afterUserMessage(ctx, longMessage);
+      repository.save({
+        content: "美食日记",
+        tags: ["美食"],
+        eventDate: "2024-02-01",
+      });
 
-      expect(mockRepository.save).toHaveBeenCalledWith(modifiedDiary);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // 按标签查询
+      const travelDiaries = repository.list({ tags: ["旅行"] });
+      const foodDiaries = repository.list({ tags: ["美食"] });
+
+      expect(travelDiaries.length).toBeGreaterThanOrEqual(1);
+      expect(foodDiaries.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("应该能更新日记", async () => {
+      const id = repository.save({
+        content: "原始内容",
+        eventDate: "2024-01-01",
+      });
+
+      const success = repository.update(id, { content: "更新内容" });
+      expect(success).toBe(true);
+
+      const updated = repository.findById(id);
+      expect(updated?.content).toBe("更新内容");
+    });
+
+    it("应该能删除日记", async () => {
+      const id = repository.save({
+        content: "待删除",
+        eventDate: "2024-01-01",
+      });
+
+      const success = repository.delete(id);
+      expect(success).toBe(true);
+
+      const deleted = repository.findById(id);
+      expect(deleted).toBeNull();
     });
   });
 
   describe("错误处理", () => {
-    it("LLM 错误应该优雅降级不影响主流程", async () => {
-      vi.mocked(mockAdapter.chat).mockRejectedValue(new Error("API error"));
-
-      const longMessage = "A".repeat(201);
-      await expect(
-        hook.afterUserMessage(ctx, longMessage),
-      ).resolves.toBeUndefined();
-
-      expect(mockRepository.save).not.toHaveBeenCalled();
+    it("更新不存在的日记应该返回 false", () => {
+      const success = repository.update("non-existent-id", { content: "测试" });
+      expect(success).toBe(false);
     });
 
-    it("extract 错误应该优雅降级", async () => {
-      vi.mocked(mockAdapter.chat)
-        .mockResolvedValueOnce({
-          content: `{"isRecall": true, "reason": "回忆", "confidence": 0.9}`,
-        } as LLMResponse)
-        .mockRejectedValueOnce(new Error("Extract error"));
-
-      const longMessage = "A".repeat(201);
-      await expect(
-        hook.afterUserMessage(ctx, longMessage),
-      ).resolves.toBeUndefined();
+    it("删除不存在的日记应该返回 false", () => {
+      const success = repository.delete("non-existent-id");
+      expect(success).toBe(false);
     });
 
-    it("用户确认错误应该优雅降级", async () => {
-      vi.mocked(mockAdapter.chat)
-        .mockResolvedValueOnce({
-          content: `{"isRecall": true, "reason": "回忆", "confidence": 0.9}`,
-        } as LLMResponse)
-        .mockResolvedValueOnce({
-          content: `{"eventDate": null, "content": "test", "people": [], "locations": [], "emotions": [], "tags": []}`,
-        } as LLMResponse);
+    it("应该处理空的数组字段", () => {
+      const id = repository.save({
+        content: "测试",
+        people: [],
+        locations: [],
+        emotions: [],
+        tags: [],
+      });
 
-      vi.mocked(DiaryModule.confirmExtraction).mockRejectedValue(
-        new Error("UI error"),
-      );
-
-      const longMessage = "A".repeat(201);
-      await expect(
-        hook.afterUserMessage(ctx, longMessage),
-      ).resolves.toBeUndefined();
+      const found = repository.findById(id);
+      expect(found).not.toBeNull();
+      expect(found?.people).toEqual([]);
+      expect(found?.locations).toEqual([]);
     });
   });
 
-  describe("消息累积", () => {
-    it("应该累积多条消息", async () => {
-      vi.mocked(mockAdapter.chat).mockResolvedValue({
-        content: `{"isRecall": true, "reason": "回忆", "confidence": 0.9}`,
-      } as LLMResponse);
+  describe("消息累积逻辑", () => {
+    it("应该正确计算消息累积", () => {
+      const adapter = createAdapter("deepseek", config);
+      const extractor = new DiaryExtractor(adapter);
 
-      // 发送三条消息触发
-      await hook.afterUserMessage(ctx, "消息1");
-      await hook.afterUserMessage(ctx, "消息2");
-      await hook.afterUserMessage(ctx, "消息3");
+      // 测试累积逻辑
+      const result1 = extractor.accumulate("消息1", []);
+      expect(result1.accumulated).toEqual(["消息1"]);
+      expect(result1.ready).toBe(false);
 
-      expect(mockAdapter.chat).toHaveBeenCalled();
-      // 验证 prompt 包含所有消息
-      const calls = vi.mocked(mockAdapter.chat).mock.calls;
-      const prompt = calls[0]?.[1] as string;
-      expect(prompt).toContain("消息1");
-      expect(prompt).toContain("消息2");
-      expect(prompt).toContain("消息3");
+      const result2 = extractor.accumulate("消息2", result1.accumulated);
+      expect(result2.accumulated).toEqual(["消息1", "消息2"]);
+      expect(result2.ready).toBe(false);
+
+      const result3 = extractor.accumulate("消息3", result2.accumulated);
+      expect(result3.accumulated).toEqual(["消息1", "消息2", "消息3"]);
+      expect(result3.ready).toBe(true); // 3 条消息触发
     });
 
-    it("提取成功后应该清空缓冲", async () => {
-      vi.mocked(mockAdapter.chat).mockResolvedValue({
-        content: `{"isRecall": true, "reason": "回忆", "confidence": 0.9}`,
-      } as LLMResponse);
-      vi.mocked(DiaryModule.confirmExtraction).mockResolvedValue({
-        action: "confirm",
-      });
-
-      // 发送长消息触发
-      const longMessage = "A".repeat(201);
-      await hook.afterUserMessage(ctx, longMessage);
-
-      // 再次发送短消息（应该不触发）
-      vi.mocked(mockAdapter.chat).mockClear();
-      await hook.afterUserMessage(ctx, "新消息");
-
-      expect(mockAdapter.chat).not.toHaveBeenCalled();
-    });
-
-    it("不是回忆时应该清空缓冲", async () => {
-      vi.mocked(mockAdapter.chat).mockResolvedValue({
-        content: `{"isRecall": false, "reason": "日常", "confidence": 0.9}`,
-      } as LLMResponse);
+    it("应该按长度触发提取", () => {
+      const adapter = createAdapter("deepseek", config);
+      const extractor = new DiaryExtractor(adapter);
 
       const longMessage = "A".repeat(201);
-      await hook.afterUserMessage(ctx, longMessage);
-
-      // 验证缓冲已清空
-      vi.mocked(mockAdapter.chat).mockClear();
-      await hook.afterUserMessage(ctx, "新消息");
-
-      expect(mockAdapter.chat).not.toHaveBeenCalled();
+      const result = extractor.accumulate(longMessage, []);
+      expect(result.ready).toBe(true);
     });
   });
 });

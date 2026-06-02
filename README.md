@@ -25,3 +25,30 @@ npm run dev          # 开发模式
 npm run build        # 编译
 npm run test         # 测试
 ```
+
+## 使用
+
+### 交互模式
+
+```bash
+npm run dev
+# 输入消息进行对话，系统自动识别回忆并提取为日记
+```
+
+### Headless 模式（自动化/测试）
+
+```bash
+# 单条消息
+echo "去年七月去了成都" | npm run dev -- --headless
+
+# 多条消息
+cat <<EOF | npm run dev -- --headless
+去年七月去了成都
+吃了很多好吃的
+EOF
+```
+
+Headless 模式特点：
+- 从 stdin 读取输入，无需交互
+- 日记自动确认保存
+- 输出使用简洁格式（适合日志）

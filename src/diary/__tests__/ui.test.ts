@@ -1,5 +1,15 @@
 /**
  * Diary UI 测试
+ *
+ * 注意：@clack/prompts 必须保持 mock
+ *
+ * 原因：
+ * 1. UI 交互需要用户输入（select/text prompts），无法在测试环境中自动化
+ * 2. 这些是终端交互式组件，测试时没有真实的 TTY
+ * 3. Mock 可以测试所有逻辑分支（confirm/modify/skip）
+ *
+ * 这与 LLM/Database 测试不同 - 后者可以用真实 API/数据库，
+ * 但交互式 UI 在测试环境中必须 mock。
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -7,7 +17,7 @@ import { confirmExtraction } from "../ui";
 import type { DiaryEntry } from "../types";
 import * as p from "@clack/prompts";
 
-// Mock @clack/prompts
+// Mock @clack/prompts（必需：无法在测试环境中进行真实交互）
 vi.mock("@clack/prompts", () => ({
   note: vi.fn(),
   text: vi.fn(),

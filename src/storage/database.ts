@@ -5,7 +5,7 @@
 
 import Database from "better-sqlite3";
 import { existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 let db: Database.Database | null = null;
 
@@ -27,7 +27,8 @@ export function initDatabase(dataDir: string = DEFAULT_DATA_DIR): void {
   }
 
   // 确保数据目录存在
-  const dbPath = join(process.cwd(), dataDir);
+  // 如果 dataDir 是绝对路径，直接使用；否则相对于 process.cwd()
+  const dbPath = isAbsolute(dataDir) ? dataDir : join(process.cwd(), dataDir);
   if (!existsSync(dbPath)) {
     mkdirSync(dbPath, { recursive: true });
   }
