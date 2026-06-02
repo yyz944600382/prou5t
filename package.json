@@ -16,9 +16,26 @@
     "lint": "biome check src/",
     "format": "biome format src/ --write"
   },
-  "keywords": ["agent", "diary", "memory", "recall"],
+  "keywords": [
+    "agent",
+    "diary",
+    "memory",
+    "recall"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.100.1",
+    "@clack/prompts": "^1.5.0",
+    "dotenv": "^17.4.2",
+    "openai": "^6.41.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.6"
   }
 }
