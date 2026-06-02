@@ -7,6 +7,7 @@ import { loadConfig, validateConfig } from "./utils/config";
 import { createAdapter } from "./adapters";
 import { HookRegistry } from "./hooks/registry";
 import { AgentCore } from "./agent/core";
+import { createDiaryExtractHook } from "./hooks/diary-extract";
 
 async function main() {
   // 解析命令行参数
@@ -30,6 +31,10 @@ async function main() {
   // 初始化组件
   const adapter = createAdapter(config.defaultModel, config);
   const hooks = new HookRegistry();
+
+  // 注册日记提取 Hook
+  hooks.register(createDiaryExtractHook(adapter));
+
   const agent = new AgentCore({ adapter, hooks });
 
   // 欢迎界面

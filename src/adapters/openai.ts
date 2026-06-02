@@ -6,12 +6,26 @@ import OpenAI from "openai";
 import type { LLMAdapter, LLMResponse } from "./base";
 import type { Message, ToolDefinition } from "../agent/types";
 
+export interface OpenAIAdapterOptions {
+  /** API Key */
+  apiKey: string;
+  /** 模型名称 (默认 gpt-4o) */
+  model?: string;
+  /** API Base URL (可选，用于兼容 OpenAI 格式的 API) */
+  baseURL?: string;
+}
+
 export class OpenAIAdapter implements LLMAdapter {
   readonly name = "openai";
   private client: OpenAI;
+  private modelName: string;
 
-  constructor(apiKey: string) {
-    this.client = new OpenAI({ apiKey });
+  constructor(options: OpenAIAdapterOptions) {
+    this.client = new OpenAI({
+      apiKey: options.apiKey,
+      baseURL: options.baseURL,
+    });
+    this.modelName = options.model ?? "gpt-4o";
   }
 
   async chat(messages: Message[], systemPrompt?: string): Promise<LLMResponse> {
@@ -30,7 +44,7 @@ export class OpenAIAdapter implements LLMAdapter {
     }
 
     const response = await this.client.chat.completions.create({
-      model: "gpt-4o",
+      model: this.modelName,
       messages: allMessages,
     });
 
@@ -59,7 +73,7 @@ export class OpenAIAdapter implements LLMAdapter {
     }
 
     const response = await this.client.chat.completions.create({
-      model: "gpt-4o",
+      model: this.modelName,
       messages: allMessages,
       tools: tools.map((t) => ({
         type: "function" as const,
