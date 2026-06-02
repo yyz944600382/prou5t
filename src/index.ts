@@ -36,14 +36,8 @@ async function main() {
   p.intro("prou5t — 回忆助手");
   p.note(`模型: ${config.defaultModel}`, "配置");
 
-  // 对话循环
-  const conversation = p.group({
-    start: () =>
-      p.text({
-        message: "你想聊点什么？",
-        placeholder: "开始回忆...",
-      }),
-  });
+  // 触发 beforeConversation Hook（注入记忆等）
+  await hooks.trigger("beforeConversation", agent.context);
 
   // 主循环
   async function chatLoop() {

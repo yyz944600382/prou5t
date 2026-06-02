@@ -19,10 +19,12 @@ export class ClaudeAdapter implements LLMAdapter {
       model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
       system: systemPrompt ?? "你是 prou5t 回忆助手。",
-      messages: messages.map((m) => ({
-        role: m.role === "user" ? "user" : "assistant",
-        content: m.content,
-      })),
+      messages: messages
+        .filter((m) => m.role !== "system") // system 由 systemPrompt 参数单独传入
+        .map((m) => ({
+          role: m.role === "user" ? "user" : "assistant",
+          content: m.content,
+        })),
     });
 
     const textBlock = response.content.find((b) => b.type === "text");

@@ -22,6 +22,7 @@ export class OpenAIAdapter implements LLMAdapter {
     }
 
     for (const m of messages) {
+      if (m.role === "system") continue; // system 由 systemPrompt 单独传入
       allMessages.push({
         role: m.role === "assistant" ? "assistant" : "user",
         content: m.content,
@@ -50,6 +51,7 @@ export class OpenAIAdapter implements LLMAdapter {
     }
 
     for (const m of messages) {
+      if (m.role === "system") continue; // system 由 systemPrompt 单独传入
       allMessages.push({
         role: m.role === "assistant" ? "assistant" : "user",
         content: m.content,

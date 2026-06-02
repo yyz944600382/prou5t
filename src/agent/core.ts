@@ -103,9 +103,11 @@ export class AgentCore {
 
   /** 处理工具调用结果，获取 LLM 后续回复 */
   private async handleToolResult(result: ToolResult): Promise<LLMResponse> {
-    // 将工具调用和结果加入消息历史
+    // TODO: 当前以 user 角色注入工具结果，后续需按各 LLM API 规范处理
+    // Claude API 需要 role=user 包裹 tool_result content block
+    // OpenAI API 需要 role=tool + tool_call_id
     const toolMessage: Message = {
-      role: "user", // 工具结果以 user 角色送回（简化处理）
+      role: "user",
       content: `[Tool: ${result.name}] ${result.result}`,
       timestamp: new Date(),
     };
