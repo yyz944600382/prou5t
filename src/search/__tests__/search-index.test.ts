@@ -11,7 +11,7 @@ import { DiaryRepository } from "../../storage/diary-repository";
 describe("search-index", () => {
   beforeEach(() => {
     process.env.DATABASE_PATH = ":memory:";
-    initDatabase();
+    initDatabase(":memory:");
   });
 
   afterEach(() => {
@@ -74,7 +74,7 @@ describe("search-index", () => {
       db.exec("DELETE FROM diaries");
       db.exec("DELETE FROM diaries_fts");
 
-      const diary = diaryRepo.save({
+      const diaryId = diaryRepo.save({
         content: "测试日记",
         tags: ["测试"],
       });
@@ -82,7 +82,7 @@ describe("search-index", () => {
       const beforeCount = getSearchIndexCount();
       expect(beforeCount).toBe(1);
 
-      diaryRepo.delete(diary.id);
+      diaryRepo.delete(diaryId);
 
       const afterCount = getSearchIndexCount();
       expect(afterCount).toBe(0);
@@ -182,7 +182,7 @@ describe("search-index", () => {
       db.exec("DELETE FROM diaries");
       db.exec("DELETE FROM diaries_fts");
 
-      const diary = diaryRepo.save({
+      const diaryId = diaryRepo.save({
         content: "原始内容",
         tags: ["原始"],
       });
@@ -190,7 +190,7 @@ describe("search-index", () => {
       expect(getSearchIndexCount()).toBeGreaterThanOrEqual(1);
 
       // 更新日记
-      diaryRepo.update(diary.id, {
+      diaryRepo.update(diaryId, {
         content: "更新后的内容",
         tags: ["更新"],
       });
@@ -207,7 +207,7 @@ describe("search-index", () => {
       db.exec("DELETE FROM diaries");
       db.exec("DELETE FROM diaries_fts");
 
-      const diary = diaryRepo.save({
+      const diaryId = diaryRepo.save({
         content: "待删除",
         tags: ["删除"],
       });
@@ -215,7 +215,7 @@ describe("search-index", () => {
       const beforeCount = getSearchIndexCount();
       expect(beforeCount).toBe(1);
 
-      diaryRepo.delete(diary.id);
+      diaryRepo.delete(diaryId);
 
       const afterCount = getSearchIndexCount();
       expect(afterCount).toBe(0);

@@ -23,10 +23,10 @@ export function rebuildSearchIndex(): void {
   // 清空 FTS 索引
   db.exec(`DELETE FROM ${FTS_TABLE_NAME};`);
 
-  // 从 diaries 表重新填充索引
+  // 从 diaries 表重新填充索引（用 tokenize_chinese 做中文分词）
   db.exec(`
     INSERT INTO ${FTS_TABLE_NAME}(rowid, content, tags, people, locations)
-    SELECT rowid, content, tags, people, locations FROM diaries;
+    SELECT rowid, tokenize_chinese(content), tokenize_chinese(tags), tokenize_chinese(people), tokenize_chinese(locations) FROM diaries;
   `);
 }
 

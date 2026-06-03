@@ -7,60 +7,14 @@ import Database from "better-sqlite3";
 import type { SearchQuery, SearchResult } from "./types";
 import type { DiaryEntry } from "../diary/types";
 import { getDb } from "../storage/database";
-
-/**
- * 构建优化的 FTS5 查询
- * 支持中文分词和多种查询模式
- *
- * 注意：FTS5 simple tokenizer 对中文是按字符分词的
- * - 单个中文字符可以搜索
- * - 多个中文字符需要用 OR 连接每个字符进行匹配
- */
-function buildFTSQuery(keyword: string): string {
-  const trimmed = keyword.trim();
-
-  // 空查询
-  if (!trimmed) {
-    return "";
-  }
-
-  // 检测是否是高级查询（包含 FTS5 运算符）
-  const hasOperators = /\b(AND|OR|NOT|NEAR)\b/i.test(trimmed);
-  if (hasOperators) {
-    return trimmed;
-  }
-
-  // 引号包裹的短语查询
-  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    return trimmed;
-  }
-
-  // 对中文文本：每个字符作为单独的搜索词，用 OR 连接
-  // FTS5 simple tokenizer 对中文是按字符分词，所以 "测试同步" 需要拆分为 "测 OR 试 OR 同 OR 步"
-  const hasChinese = /[一-龥]/.test(trimmed);
-  if (hasChinese) {
-    // 提取所有中文字符
-    const chineseChars = trimmed.match(/[一-龥]/g) ?? [];
-    if (chineseChars.length > 0) {
-      // 用 OR 连接每个中文字符
-      return chineseChars.map((c) => `"${c}"`).join(" OR ");
-    }
-  }
-
-  // 英文/其他：空格分隔的关键词使用 AND 逻辑
-  const terms = trimmed.split(/\s+/).filter((t) => t.length > 0);
-  if (terms.length === 1) {
-    return `"${terms[0].replace(/"/g, '""')}"`;
-  }
-  return terms.map((t) => `"${t.replace(/"/g, '""')}"`).join(" AND ");
-}
+import { buildTokenizedFTSQuery } from "./tokenizer";
 
 /**
  * 高亮标记常量（与 highlight.ts 保持一致）
- * 使用 { } 作为标记，避免与 SQL 特殊字符冲突
+ * 使用 \x01 \x02 作为标记，不会与正常文本冲突
  */
-const MARK_START = "{";
-const MARK_END = "}";
+const MARK_START = "\x01";
+const MARK_END = "\x02";
 
 /**
  * 构建高亮 SQL
@@ -98,8 +52,8 @@ export class SearchRepository {
     }
 
     const trimmedKeyword = keyword.trim();
-    // 构建优化的 FTS5 查询
-    const ftsQuery = buildFTSQuery(trimmedKeyword);
+    // 构建适配中文分词的 FTS5 查询
+    const ftsQuery = buildTokenizedFTSQuery(trimmedKeyword);
 
     // 构建查询 SQL
     const sql = `
@@ -152,7 +106,7 @@ export class SearchRepository {
     this.db.exec("DELETE FROM diaries_fts");
     this.db.exec(`
       INSERT INTO diaries_fts(rowid, content, tags, people, locations)
-      SELECT rowid, content, tags, people, locations FROM diaries
+      SELECT rowid, tokenize_chinese(content), tokenize_chinese(tags), tokenize_chinese(people), tokenize_chinese(locations) FROM diaries
     `);
   }
 
@@ -174,19 +128,19 @@ export class SearchRepository {
     };
 
     // 检查 FTS5 是否生成了高亮标记，如果没有则手动添加
-    const contentHighlight = row.content_highlight && row.content_highlight.includes("{")
+    const contentHighlight = row.content_highlight && row.content_highlight.includes(MARK_START)
       ? row.content_highlight
       : this.addHighlightMarks(row.content, keyword);
 
-    const tagsHighlight = row.tags_highlight && row.tags_highlight.includes("{")
+    const tagsHighlight = row.tags_highlight && row.tags_highlight.includes(MARK_START)
       ? row.tags_highlight
       : this.addHighlightMarks(row.tags ?? "", keyword);
 
-    const peopleHighlight = row.people_highlight && row.people_highlight.includes("{")
+    const peopleHighlight = row.people_highlight && row.people_highlight.includes(MARK_START)
       ? row.people_highlight
       : this.addHighlightMarks(row.people ?? "", keyword);
 
-    const locationsHighlight = row.locations_highlight && row.locations_highlight.includes("{")
+    const locationsHighlight = row.locations_highlight && row.locations_highlight.includes(MARK_START)
       ? row.locations_highlight
       : this.addHighlightMarks(row.locations ?? "", keyword);
 
@@ -210,7 +164,7 @@ export class SearchRepository {
    */
   private addHighlightMarks(text: string, keyword: string): string {
     if (!text || !keyword) {
-      return text;
+      return text ?? "";
     }
 
     // 对于中文关键词，标记每个字符的出现
@@ -219,8 +173,7 @@ export class SearchRepository {
       const chineseChars = keyword.match(/[一-龥]/g) ?? [];
       let result = text;
       for (const char of chineseChars) {
-        // 使用全局替换标记所有出现
-        result = result.replaceAll(char, `{${char}}`);
+        result = result.replaceAll(char, `${MARK_START}${char}${MARK_END}`);
       }
       return result;
     }
@@ -238,7 +191,7 @@ export class SearchRepository {
     const match = text.slice(index, index + keyword.length);
     const after = text.slice(index + keyword.length);
 
-    return `${before}{${match}}${after}`;
+    return `${before}${MARK_START}${match}${MARK_END}${after}`;
   }
 
   /**

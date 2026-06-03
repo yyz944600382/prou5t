@@ -16,23 +16,23 @@ import type { SearchHighlights } from "../types";
 describe("highlight", () => {
   describe("generateHighlight", () => {
     it("应该使用 FTS 返回的高亮结果", () => {
-      const ftsHighlight = "这是{测试}内容";
+      const ftsHighlight = "这是\x01测试\x02内容";
       const result = generateHighlight("这是测试内容", "测试", ftsHighlight);
 
-      expect(result).toContain("{");
+      expect(result).toContain("\x01");
     });
 
     it("FTS 高亮没有标记时应该使用简单回退", () => {
       const result = generateHighlight("这是测试内容", "测试", undefined);
 
-      expect(result).toContain("{");
-      expect(result).toContain("}");
+      expect(result).toContain("\x01");
+      expect(result).toContain("\x02");
     });
 
     it("简单回退应该正确标记关键词位置", () => {
       const result = generateHighlight("Hello World", "World", undefined);
 
-      expect(result).toBe("Hello {World}");
+      expect(result).toBe("Hello \x01World\x02");
     });
 
     it("找不到关键词时应该返回原文", () => {
@@ -50,20 +50,20 @@ describe("highlight", () => {
     it("应该处理大小写不敏感的匹配", () => {
       const result = generateHighlight("Hello World", "world", undefined);
 
-      expect(result).toBe("Hello {World}");
+      expect(result).toBe("Hello \x01World\x02");
     });
 
     it("应该只标记第一个匹配项", () => {
       const result = generateHighlight("test test test", "test", undefined);
 
       // 简单回退只标记第一个匹配
-      expect(result).toBe("{test} test test");
+      expect(result).toBe("\x01test\x02 test test");
     });
   });
 
   describe("formatHighlightForTerminal", () => {
-    it("应该将 { } 替换为 ANSI 颜色码", () => {
-      const text = "这是{测试}内容";
+    it("应该将 \\x01 \\x02 替换为 ANSI 颜色码", () => {
+      const text = "这是\x01测试\x02内容";
       const formatted = formatHighlightForTerminal(text);
 
       expect(formatted).toContain("\x1b["); // ANSI 转义码
@@ -71,26 +71,26 @@ describe("highlight", () => {
     });
 
     it("应该移除所有高亮标记", () => {
-      const text = "这是{测试}内容";
+      const text = "这是\x01测试\x02内容";
       const formatted = formatHighlightForTerminal(text);
 
-      expect(formatted).not.toContain("{");
-      expect(formatted).not.toContain("}");
+      expect(formatted).not.toContain("\x01");
+      expect(formatted).not.toContain("\x02");
     });
   });
 
   describe("formatHighlightForMarkdown", () => {
-    it("应该将 { } 替换为 Markdown 加粗", () => {
-      const text = "这是{测试}内容";
+    it("应该将 \\x01 \\x02 替换为 Markdown 加粗", () => {
+      const text = "这是\x01测试\x02内容";
       const formatted = formatHighlightForMarkdown(text);
 
       expect(formatted).toContain("**测试**");
-      expect(formatted).not.toContain("{");
-      expect(formatted).not.toContain("}");
+      expect(formatted).not.toContain("\x01");
+      expect(formatted).not.toContain("\x02");
     });
 
     it("应该正确处理多个高亮标记", () => {
-      const text = "{第一个} 和 {第二个}";
+      const text = "\x01第一个\x02 和 \x01第二个\x02";
       const formatted = formatHighlightForMarkdown(text);
 
       expect(formatted).toBe("**第一个** 和 **第二个**");
@@ -153,10 +153,10 @@ describe("highlight", () => {
   describe("formatAllHighlights", () => {
     it("应该格式化所有高亮字段", () => {
       const highlights: SearchHighlights = {
-        content: "这是{测试}内容",
-        tags: "{标签}",
-        people: "{人物}",
-        locations: "{地点}",
+        content: "这是\x01测试\x02内容",
+        tags: "\x01标签\x02",
+        people: "\x01人物\x02",
+        locations: "\x01地点\x02",
       };
 
       const formatted = formatAllHighlights(highlights);

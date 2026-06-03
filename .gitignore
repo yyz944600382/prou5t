@@ -25,5 +25,10 @@ Thumbs.db
 *.log
 logs/
 
+# Tests
+**/__tests__/
+*.test.ts
+*.spec.ts
+
 # Test coverage
 coverage/

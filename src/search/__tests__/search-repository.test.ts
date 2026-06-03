@@ -17,7 +17,7 @@ describe("SearchRepository", () => {
   beforeEach(() => {
     // 使用内存数据库进行测试
     process.env.DATABASE_PATH = ":memory:";
-    initDatabase();
+    initDatabase(":memory:");
     searchRepo = new SearchRepository();
     diaryRepo = new DiaryRepository();
   });
@@ -189,8 +189,8 @@ describe("SearchRepository", () => {
       const result = results.find((r) => r.diary.content.includes("海边"));
       expect(result).toBeDefined();
       expect(result!.highlights.content).toBeDefined();
-      // FTS5 会用 { } 标记匹配项
-      expect(result!.highlights.content).toContain("{");
+      // FTS5 会用 \x01 \x02 标记匹配项
+      expect(result!.highlights.content).toContain("\x01");
     });
 
     it("应该返回 tags 高亮信息", () => {
@@ -464,25 +464,25 @@ describe("SearchRepository", () => {
 
   describe("索引同步测试", () => {
     it("INSERT 后应该能立即搜索到", () => {
-      const diary = diaryRepo.save({
+      const diaryId = diaryRepo.save({
         content: "新插入的日记",
         tags: ["新"],
       });
 
       const results = searchRepo.search({ keyword: "新插入" });
       expect(results.length).toBeGreaterThanOrEqual(1);
-      const result = results.find((r) => r.diary.id === diary.id);
+      const result = results.find((r) => r.diary.id === diaryId);
       expect(result).toBeDefined();
     });
 
     it("UPDATE 后应该能搜索到新内容", () => {
-      const diary = diaryRepo.save({
+      const diaryId = diaryRepo.save({
         content: "原始内容",
         tags: ["原始"],
       });
 
       // 修改内容
-      diaryRepo.update(diary.id, {
+      diaryRepo.update(diaryId, {
         content: "修改后的内容巴黎旅行",
         tags: ["修改"],
       });
@@ -497,7 +497,7 @@ describe("SearchRepository", () => {
     });
 
     it("DELETE 后应该搜索不到", () => {
-      const diary = diaryRepo.save({
+      const diaryId = diaryRepo.save({
         content: "待删除的日记",
         tags: ["删除"],
       });
@@ -507,7 +507,7 @@ describe("SearchRepository", () => {
       expect(results.length).toBeGreaterThanOrEqual(1);
 
       // 删除
-      diaryRepo.delete(diary.id);
+      diaryRepo.delete(diaryId);
 
       // 应该搜不到
       results = searchRepo.search({ keyword: "待删除" });
