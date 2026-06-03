@@ -72,6 +72,58 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_diaries_event_date ON diaries(event_date);
     CREATE INDEX IF NOT EXISTS idx_diaries_created_at ON diaries(created_at);
   `);
+
+  // 创建 FTS5 全文搜索索引
+  createFTSIndex();
+}
+
+/**
+ * 创建 FTS5 全文搜索索引和同步触发器
+ */
+function createFTSIndex(): void {
+  if (!db) {
+    throw new Error("Database not initialized");
+  }
+
+  try {
+    // 创建 FTS5 虚拟表（如果不存在）
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS diaries_fts USING fts5(
+        content,
+        tags,
+        people,
+        locations,
+        content='diaries',
+        content_rowid='rowid'
+      );
+    `);
+
+    // 创建触发器：INSERT 时同步
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS diaries_fts_insert AFTER INSERT ON diaries BEGIN
+        INSERT INTO diaries_fts(rowid, content, tags, people, locations)
+        VALUES (new.rowid, new.content, new.tags, new.people, new.locations);
+      END;
+    `);
+
+    // 创建触发器：UPDATE 时同步
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS diaries_fts_update AFTER UPDATE ON diaries BEGIN
+        UPDATE diaries_fts
+        SET content = new.content, tags = new.tags, people = new.people, locations = new.locations
+        WHERE rowid = new.rowid;
+      END;
+    `);
+
+    // 创建触发器：DELETE 时同步
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS diaries_fts_delete AFTER DELETE ON diaries BEGIN
+        DELETE FROM diaries_fts WHERE rowid = old.rowid;
+      END;
+    `);
+  } catch (error) {
+    console.warn("[Database] FTS5 初始化失败，搜索功能可能不可用:", error);
+  }
 }
 
 /**
