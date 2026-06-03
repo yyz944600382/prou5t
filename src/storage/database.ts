@@ -6,6 +6,7 @@
 import Database from "better-sqlite3";
 import { existsSync, mkdirSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { tokenizeChinese } from "../search/tokenizer";
 
 let db: Database.Database | null = null;
 
@@ -24,6 +25,14 @@ const DEFAULT_DB_NAME = "prou5t.db";
 export function initDatabase(dataDir: string = DEFAULT_DATA_DIR): void {
   if (db) {
     return; // 已初始化
+  }
+
+  // 支持 :memory: 内存数据库（用于测试隔离）
+  if (dataDir === ":memory:") {
+    db = new Database(":memory:");
+    db.pragma("journal_mode = WAL");
+    createTables();
+    return;
   }
 
   // 确保数据目录存在
@@ -86,36 +95,52 @@ function createFTSIndex(): void {
   }
 
   try {
-    // 创建 FTS5 虚拟表（如果不存在）
+    // 注册自定义 SQL 函数：中文分词
+    db.function("tokenize_chinese", (text: string | null) => {
+      if (!text) return "";
+      return tokenizeChinese(text);
+    });
+
+    // 独立 FTS5 虚拟表（不用 content= 外部内容模式，避免同步问题）
     db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS diaries_fts USING fts5(
         content,
         tags,
         people,
-        locations,
-        content='diaries',
-        content_rowid='rowid'
+        locations
       );
     `);
 
-    // 创建触发器：INSERT 时同步
+    // 触发器：INSERT 时同步（用 tokenize_chinese 做字符级分词）
     db.exec(`
       CREATE TRIGGER IF NOT EXISTS diaries_fts_insert AFTER INSERT ON diaries BEGIN
         INSERT INTO diaries_fts(rowid, content, tags, people, locations)
-        VALUES (new.rowid, new.content, new.tags, new.people, new.locations);
+        VALUES (
+          new.rowid,
+          tokenize_chinese(new.content),
+          tokenize_chinese(new.tags),
+          tokenize_chinese(new.people),
+          tokenize_chinese(new.locations)
+        );
       END;
     `);
 
-    // 创建触发器：UPDATE 时同步
+    // 触发器：UPDATE 时先删旧数据再插入新数据
     db.exec(`
       CREATE TRIGGER IF NOT EXISTS diaries_fts_update AFTER UPDATE ON diaries BEGIN
-        UPDATE diaries_fts
-        SET content = new.content, tags = new.tags, people = new.people, locations = new.locations
-        WHERE rowid = new.rowid;
+        DELETE FROM diaries_fts WHERE rowid = old.rowid;
+        INSERT INTO diaries_fts(rowid, content, tags, people, locations)
+        VALUES (
+          new.rowid,
+          tokenize_chinese(new.content),
+          tokenize_chinese(new.tags),
+          tokenize_chinese(new.people),
+          tokenize_chinese(new.locations)
+        );
       END;
     `);
 
-    // 创建触发器：DELETE 时同步
+    // 触发器：DELETE 时同步
     db.exec(`
       CREATE TRIGGER IF NOT EXISTS diaries_fts_delete AFTER DELETE ON diaries BEGIN
         DELETE FROM diaries_fts WHERE rowid = old.rowid;

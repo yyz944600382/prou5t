@@ -7,10 +7,10 @@ import type { SearchHighlights } from "./types";
 
 /**
  * 高亮标记的默认格式
- * 使用 { } 作为标记，避免与 SQL 特殊字符冲突
+ * 使用 \x01 \x02 作为标记，不会与正常文本冲突
  */
-const MARK_START = "{";
-const MARK_END = "}";
+const MARK_START = "\x01";
+const MARK_END = "\x02";
 
 /**
  * 生成带高亮的文本片段
@@ -26,7 +26,7 @@ export function generateHighlight(
   ftsHighlight?: string
 ): string {
   // 如果 FTS5 已经返回高亮结果，直接使用
-  if (ftsHighlight && ftsHighlight.includes(MARK_START)) {
+  if (ftsHighlight && ftsHighlight.includes("\x01")) {
     return ftsHighlight;
   }
 

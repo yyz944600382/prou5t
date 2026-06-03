@@ -208,7 +208,7 @@ describe("E2E 测试：S004 关键词检索", () => {
 
         // 高亮内容应该包含标记
         const hasHighlight = Object.values(r.highlights).some(
-          (h) => h && h.includes("{")
+          (h) => h && h.includes("\x01")
         );
         expect(hasHighlight).toBe(true);
       });
@@ -242,7 +242,7 @@ describe("E2E 测试：S004 关键词检索", () => {
     });
 
     it("创建日记后应该能立即搜索到", () => {
-      const diary = diaryRepo.save({
+      const diaryId = diaryRepo.save({
         eventDate: "2024-06-03",
         content: "这是一篇新创建的测试日记，包含关键词：即时搜索",
         tags: ["测试", "即时搜索"],
@@ -252,12 +252,12 @@ describe("E2E 测试：S004 关键词检索", () => {
       const results = searchRepo.search({ keyword: "即时搜索" });
       expect(results.length).toBeGreaterThanOrEqual(1);
 
-      const found = results.find((r) => r.diary.id === diary.id);
+      const found = results.find((r) => r.diary.id === diaryId);
       expect(found).toBeDefined();
     });
 
     it("更新日记后搜索结果应该同步", () => {
-      const diary = diaryRepo.save({
+      const diaryId = diaryRepo.save({
         content: "原始内容",
         tags: ["原始"],
       });
@@ -267,7 +267,7 @@ describe("E2E 测试：S004 关键词检索", () => {
       expect(results.length).toBeGreaterThanOrEqual(1);
 
       // 更新为新内容
-      diaryRepo.update(diary.id, {
+      diaryRepo.update(diaryId, {
         content: "更新后的新内容：巴黎旅行",
         tags: ["更新", "巴黎"],
       });
@@ -282,7 +282,7 @@ describe("E2E 测试：S004 关键词检索", () => {
     });
 
     it("删除日记后应该搜索不到", () => {
-      const diary = diaryRepo.save({
+      const diaryId = diaryRepo.save({
         content: "待删除的测试日记",
         tags: ["删除"],
       });
@@ -292,7 +292,7 @@ describe("E2E 测试：S004 关键词检索", () => {
       expect(results.length).toBeGreaterThanOrEqual(1);
 
       // 删除日记
-      diaryRepo.delete(diary.id);
+      diaryRepo.delete(diaryId);
 
       // 应该搜索不到
       results = searchRepo.search({ keyword: "待删除" });
@@ -303,11 +303,11 @@ describe("E2E 测试：S004 关键词检索", () => {
       // 批量创建 10 条日记
       const ids: string[] = [];
       for (let i = 0; i < 10; i++) {
-        const diary = diaryRepo.save({
+        const id = diaryRepo.save({
           content: `批量测试日记 ${i}，关键词：批量测试`,
           tags: ["批量", "测试"],
         });
-        ids.push(diary.id);
+        ids.push(id);
       }
 
       // 搜索应该能找到所有 10 条
@@ -407,7 +407,7 @@ describe("E2E 测试：S004 关键词检索", () => {
     });
 
     it("搜索结果数量应该合理", () => {
-      const results = searchRepo.search({ keyword: "测试" });
+      const results = searchRepo.search({ keyword: "测试", limit: 200 });
 
       // 应该返回包含"测试"的所有日记
       expect(results.length).toBeGreaterThanOrEqual(100);
